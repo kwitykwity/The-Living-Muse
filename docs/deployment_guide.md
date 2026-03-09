@@ -17,17 +17,32 @@ firebase login
 firebase use --add the-living-muse
 ```
 
-### Environment Variables (Functions)
-Set the required secrets for the backend:
+### Environment Secrets (Production Security)
+Set the required secrets for the backend. These are stored securely in Google Cloud Secret Manager and injected at runtime.
 ```bash
+# Required for payments
 firebase functions:secrets:set STRIPE_SECRET_KEY
-firebase functions:secrets:set GCP_PROJECT_ID
-firebase functions:secrets:set GCP_LOCATION
+firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
+
+# Optional: Override defaults if necessary
+# firebase functions:config:set project.id="your-id"
 ```
 
 ---
 
-## 🌐 2. Frontend Deployment (Hosting)
+## 🏗️ 2. Pre-flight Verification
+Before deploying, run the pre-flight check to verify that all APIs (Vertex AI, Stripe, Firestore) are connected and writable.
+```bash
+cd functions
+npm run build
+# Requires local environment setup for credentials
+npm run preflight
+```
+
+---
+
+## 🌐 3. Frontend Deployment (Hosting)
+...
 
 ### Build the Next.js App
 ```bash

@@ -4,12 +4,22 @@ import { env } from '../config/env';
 /**
  * StripeService — Manages Stripe lifecycle (Checkout + Webhooks).
  */
-export const stripe = new Stripe(env.stripeSecretKey, {
-  apiVersion: '2026-02-25.clover' as any, // Match expected version
-  typescript: true,
-});
-
 export class StripeService {
+  private static _stripe: Stripe | null = null;
+
+  /**
+   * Lazily initialize Stripe client using secret from parameters
+   */
+  private static getStripe(): Stripe {
+    if (!this._stripe) {
+      this._stripe = new Stripe(env.stripeSecretKey, {
+        apiVersion: '2026-02-25.clover' as any,
+        typescript: true,
+      });
+    }
+    return this._stripe;
+  }
+
   /**
    * createCheckoutSession
    * Generates a link for user to pay for subscription or credit pack.
@@ -23,7 +33,8 @@ export class StripeService {
     cancelUrl: string;
     customerId?: string;
   }) {
-    const session = await stripe.checkout.sessions.create({
+    const stripeClient = this.getStripe();
+    const session = await stripeClient.checkout.sessions.create({
       customer: params.customerId,
       customer_email: params.customerId ? undefined : params.email,
       line_items: [{ price: params.priceId, quantity: 1 }],
@@ -45,6 +56,7 @@ export class StripeService {
    * Validates that the webhook came from Stripe.
    */
   static constructEvent(payload: string | Buffer, signature: string) {
-    return stripe.webhooks.constructEvent(payload, signature, env.stripeWebhookSecret);
+    const stripeClient = this.getStripe();
+    return stripeClient.webhooks.constructEvent(payload, signature, env.stripeWebhookSecret);
   }
 }

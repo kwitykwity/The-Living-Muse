@@ -1,7 +1,7 @@
 import { onCall, HttpsError, onRequest } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
 import { db } from '../config/firebase-admin';
-import { env } from '../config/env';
+import { env, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET } from '../config/env';
 import { StripeService } from '../services/stripe.service';
 import { grantCredits, upgradeTier } from '../services/credit.service';
 import { SubscriptionTier, SubscriptionDoc } from '../types/firestore';
@@ -11,10 +11,11 @@ import { Timestamp } from 'firebase-admin/firestore';
  * createStripeCheckout — Callable
  * Initiates a Stripe Checkout session for a subscription or credit pack.
  */
-export const createStripeCheckout = onCall(async (request) => {
+export const createStripeCheckout = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Must be signed in.');
   }
+// ... (rest of the code remains the same)
 
   const { priceId, mode, successUrl, cancelUrl } = request.data;
 
@@ -52,8 +53,9 @@ export const createStripeCheckout = onCall(async (request) => {
  * stripeWebhook — HTTPS Webhook
  * Handles Stripe events (checkout.session.completed, etc).
  */
-export const stripeWebhook = onRequest(async (req, res) => {
+export const stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
   const signature = req.headers['stripe-signature'] as string;
+// ... (rest of the code remains the same)
 
   let event;
   try {
