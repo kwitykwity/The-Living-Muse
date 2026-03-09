@@ -43,6 +43,7 @@ export class VectorService {
     id: string;
     text: string;
     metadata: any;
+    isPublic?: boolean;
   }): Promise<void> {
     const embedding = await this.generateEmbedding(params.text);
     
@@ -52,7 +53,10 @@ export class VectorService {
       uid: params.uid,
       text: params.text,
       embedding,
-      metadata: params.metadata,
+      metadata: { 
+        ...params.metadata,
+        isPublic: !!params.isPublic 
+      },
       createdAt: Timestamp.now(),
     };
 
@@ -69,35 +73,39 @@ export class VectorService {
 
   /**
    * searchSimilarMemories
-   * Retrieves semantically similar context from the user's creative history.
-   * Uses Firestore Vector Search (findNearest).
+   * Retrieves semantically similar context.
+   * scope: 'personal' (filter by uid) or 'global' (filter by isPublic:true).
    */
-  static async searchSimilarMemories(uid: string, query: string, topK = 5): Promise<any[]> {
+  static async searchSimilarMemories(scope: 'personal' | 'global', identifier: string, query: string, topK = 10): Promise<any[]> {
     const queryEmbedding = await this.generateEmbedding(query);
     
-    logger.info(`Searching for memories similar to: "${query.substring(0, 30)}..."`);
+    logger.info(`Searching ${scope} memories similar to: "${query.substring(0, 30)}..."`);
     
     try {
-      // Note: This requires google-cloud/firestore >= v7.0.0
-      // If not supported, we fall back to a simple collection fetch
-      const vectorQuery = db.collection('memories')
-        .where('uid', '==', uid)
-        .findNearest({
-          vectorField: 'embedding',
-          queryVector: queryEmbedding,
-          limit: topK,
-          distanceMeasure: 'COSINE'
-        });
+      let queryRef = db.collection('memories') as any;
+
+      if (scope === 'personal') {
+        queryRef = queryRef.where('uid', '==', identifier);
+      } else {
+        queryRef = queryRef.where('metadata.isPublic', '==', true);
+      }
+
+      const vectorQuery = queryRef.findNearest({
+        vectorField: 'embedding',
+        queryVector: queryEmbedding,
+        limit: topK,
+        distanceMeasure: 'COSINE'
+      });
 
       const snapshot = await vectorQuery.get();
-      return snapshot.docs.map(doc => ({
+      return snapshot.docs.map((doc: any) => ({
         id: doc.id,
         score: doc.data().score,
         text: doc.data().text,
         metadata: doc.data().metadata
       }));
     } catch (error) {
-      logger.warn('Firestore Vector Search failed (potentially missing index or SDK version)', error);
+      logger.warn('Firestore Vector Search failed', error);
       return [];
     }
   }

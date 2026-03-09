@@ -48,6 +48,8 @@ export const createUserProfile = onCall(async (request) => {
     favoriteColor: validColors.includes(favoriteColor) ? favoriteColor : 'purple',
     vibePreset: validVibes.includes(vibePreset) ? vibePreset : 'orchid_noir',
     onboardingComplete: false,
+    bio: '',
+    isPublicProfile: false,
     sentimentTrend: 0,
 
     // Server-managed fields

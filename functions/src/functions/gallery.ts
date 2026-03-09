@@ -6,13 +6,14 @@ import { VectorService } from '../services/vector.service';
 
 /**
  * searchLivingPages — Semantic (RAG) search for the gallery.
+ * Scope: 'personal' (my verses) or 'global' (community discovery).
  */
 export const searchLivingPages = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Must be signed in to search.');
   }
 
-  const { query, limit = 10 } = request.data;
+  const { query, scope = 'personal', limit = 12 } = request.data;
   if (!query || typeof query !== 'string') {
     throw new HttpsError('invalid-argument', 'Query string is required.');
   }
@@ -21,26 +22,32 @@ export const searchLivingPages = onCall(async (request) => {
 
   try {
     // 1. Perform semantic search via VectorService
-    // This searches the 'memories' collection which includes indexed poems
-    const memories = await VectorService.searchSimilarMemories(uid, query, limit);
+    // identifier is uid for personal, or empty for global
+    const identifier = scope === 'personal' ? uid : '';
+    const memories = await VectorService.searchSimilarMemories(scope, identifier, query, limit);
 
     if (memories.length === 0) return { results: [] };
 
     // 2. Map memories back to LivingPages
-    // We assume every memory indexed with type:'poem' has a relatedId (poemId)
     const poemIds = memories
-      .filter(m => m.metadata?.type === 'poem')
+      .filter(m => m.metadata?.type === 'poem' && m.metadata?.relatedId)
       .map(m => m.metadata.relatedId);
 
     if (poemIds.length === 0) return { results: [] };
 
     // 3. Fetch corresponding LivingPages
-    const pagesSnapshot = await db.collection('living_pages')
-      .where('uid', '==', uid)
-      .where('poemId', 'in', poemIds)
-      .get();
+    let queryRef = db.collection('living_pages') as any;
+    if (scope === 'personal') {
+      queryRef = queryRef.where('uid', '==', uid);
+    } else {
+      queryRef = queryRef.where('isPublic', '==', true);
+    }
+    
+    // Firestore 'in' queries are capped at 30
+    const finalIds = poemIds.slice(0, 30);
+    const pagesSnapshot = await queryRef.where('poemId', 'in', finalIds).get();
 
-    const results = pagesSnapshot.docs.map(doc => ({
+    const results = pagesSnapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data()
     }));
@@ -54,6 +61,7 @@ export const searchLivingPages = onCall(async (request) => {
 
 /**
  * togglePageVisibility — Switches between Public and Private.
+ * Now syncs with Vector Index for Global Discovery.
  */
 export const togglePageVisibility = onCall(async (request) => {
   if (!request.auth) {
@@ -69,12 +77,22 @@ export const togglePageVisibility = onCall(async (request) => {
   try {
     const pageDoc = await pageRef.get();
     if (!pageDoc.exists) throw new HttpsError('not-found', 'Page not found.');
-    if (pageDoc.data()?.uid !== uid) throw new HttpsError('permission-denied', 'Not your page.');
+    const data = pageDoc.data()!;
+    if (data.uid !== uid) throw new HttpsError('permission-denied', 'Not your page.');
 
+    // 1. Update Living Page
     await pageRef.update({
       isPublic: !!isPublic,
       updatedAt: Timestamp.now()
     });
+
+    // 2. Sync to Vector Index (Memories)
+    if (data.poemId) {
+      await db.collection('memories').doc(data.poemId).update({
+        'metadata.isPublic': !!isPublic,
+        updatedAt: Timestamp.now()
+      }).catch(err => logger.warn(`Failed to sync isPublic to memory ${data.poemId}`, err));
+    }
 
     return { success: true, isPublic: !!isPublic };
   } catch (error) {

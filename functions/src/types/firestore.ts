@@ -12,6 +12,9 @@ export interface UserDoc {
   favoriteColor: string;
   vibePreset: VibePreset;
   onboardingComplete: boolean;
+  bio?: string;                // Social Muse: user bio
+  location?: string;           // Social Muse: user location
+  isPublicProfile: boolean;    // Social Muse: opt-in to public discovery
   
   // Empathetic AI (server-managed)
   sentimentTrend: number;      // Rolling average (-1.0 to 1.0)
@@ -500,6 +503,7 @@ export interface MemoryDoc {
     type: 'poem' | 'refinement' | 'journal';
     mood?: string;
     vibe?: string;
+    isPublic?: boolean;   // Added for Global Discovery
     relatedId?: string;   // e.g. poemId
   };
   createdAt: Timestamp;

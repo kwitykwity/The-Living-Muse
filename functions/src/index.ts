@@ -33,5 +33,8 @@ export { createCollection, addPageToCollection } from './functions/collection';
 // ─── Webhooks ───
 export { aiWebhook } from './functions/webhooks';
 
+// ─── Social Functions ───
+export { getPublicLivingPage, getPublicProfile } from './functions/social';
+
 // ─── Monitoring & Dashboard ───
 export { getUserDashboard } from './functions/dashboard';
