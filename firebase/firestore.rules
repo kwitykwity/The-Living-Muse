@@ -1,0 +1,115 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper Functions ──
+    function isAuth() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isAuth() && request.auth.uid == uid;
+    }
+    function isAdmin() {
+      return isAuth() && request.auth.token.admin == true;
+    }
+    function notChangingServerFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['subscriptionTier', 'creditBalance',
+                  'creditLimit', 'creditResetDate', 'purchasedCredits',
+                  'stripeCustomerId', 'subscriptionStartDate',
+                  'subscriptionEndDate']);
+    }
+
+    // ── users ──
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) && notChangingServerFields();
+      allow delete: if false;
+    }
+
+    // ── credit_transactions (server-only writes, owner reads) ──
+    match /credit_transactions/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ── subscriptions (server-only writes) ──
+    match /subscriptions/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ── muses (server creates, owner reads/deletes) ──
+    match /muses/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── poems (server creates, owner reads/edits text/deletes) ──
+    match /poems/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow create: if false;
+      allow update: if isAuth() && resource.data.uid == request.auth.uid
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                      .hasAny(['uid', 'generationModel', 'tokensUsed']);
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── media_assets (server-only) ──
+    match /media_assets/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ── living_pages ──
+    match /living_pages/{docId} {
+      allow read: if resource.data.isPublic == true
+                  || (isAuth() && resource.data.uid == request.auth.uid);
+      allow create: if false;
+      allow update: if isAuth() && resource.data.uid == request.auth.uid
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                      .hasAny(['uid', 'museId', 'poemId']);
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── collections (client-writable for owner) ──
+    match /collections/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuth() && resource.data.uid == request.auth.uid;
+      allow delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    // ── exports (server-only writes) ──
+    match /exports/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ── usage_events (admin-only reads, server-only writes) ──
+    match /usage_events/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ── feature_flags ──
+    match /feature_flags/{docId} {
+      allow read: if isAuth();
+      allow write: if isAdmin();
+    }
+
+    // ── sessions (server-only) ──
+    match /prompts_or_sessions/{docId} {
+      allow read: if isAuth() && resource.data.uid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // ── Deny everything else ──
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
